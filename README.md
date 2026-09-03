@@ -75,3 +75,13 @@ st.AddStatusHandler(prolink.StatusHandlerFunc(statusChange));
   metadata from the CDJs USB drives you may have no more than 3 CDJs. Having 4
   CDJs on the network will only allow you to read track metadata through
   linked Rekordbox.
+
+### License
+
+This repository carries a split license. Files inherited from the initial fork
+of `evanpurkhiser/prolink-go` remain under the MIT license in
+[`LICENSE`](LICENSE), copyright Evan Purkhiser. Every file added after the fork
+carries the BSD 3-Clause license in
+[`LICENSE.BSD-3-Clause`](LICENSE.BSD-3-Clause), copyright ABUZUCOM LLC.
+[`docs/template-drift.md`](docs/template-drift.md) records the exact file
+boundary between the two licenses.

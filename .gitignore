@@ -1,0 +1,11 @@
+# Policy tooling runs under Python and leaves byte-compiled output.
+__pycache__/
+*.py[codz]
+
+# Go build and coverage output.
+coverage.out
+/status-reciever
+
+# Local environment files.
+.env
+.venv/

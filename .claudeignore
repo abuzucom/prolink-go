@@ -1,0 +1,18 @@
+.git/
+vendor/
+*.lock
+*.log
+coverage/
+coverage.out
+.env*
+!.env.example
+__pycache__/
+
+# Ignore duplicate rule copies for other tools
+.cursorrules
+.clinerules
+.windsurfrules
+.copilot-instructions
+.github/copilot-instructions.md
+GEMINI.md
+CONVENTIONS.md
