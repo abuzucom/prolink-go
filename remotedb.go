@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -28,7 +29,7 @@ const rbDBServerQueryPort = 12523
 // getRemoteDBServerAddr queries the remote device for the port that the remote
 // database server is listening on for requests.
 func getRemoteDBServerAddr(deviceIP net.IP) (string, error) {
-	addr := fmt.Sprintf("%s:%d", deviceIP, rbDBServerQueryPort)
+	addr := net.JoinHostPort(deviceIP.String(), strconv.Itoa(rbDBServerQueryPort))
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -61,7 +62,7 @@ func getRemoteDBServerAddr(deviceIP net.IP) (string, error) {
 
 	port := binary.BigEndian.Uint16(data)
 
-	return fmt.Sprintf("%s:%d", deviceIP, port), nil
+	return net.JoinHostPort(deviceIP.String(), strconv.Itoa(int(port))), nil
 }
 
 type deviceConnection struct {
