@@ -132,12 +132,15 @@ func getStatusPacket(dev *Device) []byte {
 // deviceFromAnnouncePacket constructs a device object given a device
 // announcement packet.
 func deviceFromAnnouncePacket(packet []byte) (*Device, error) {
+	if len(packet) < announcePacketLen {
+		return nil, fmt.Errorf("announce packet is too short")
+	}
 	if !bytes.HasPrefix(packet, prolinkHeader) {
-		return nil, fmt.Errorf("Announce packet does not start with expected header")
+		return nil, fmt.Errorf("announce packet does not start with expected header")
 	}
 
 	if packet[0x0A] != 0x06 {
-		return nil, fmt.Errorf("Packet is not an announce packet")
+		return nil, fmt.Errorf("packet is not an announce packet")
 	}
 
 	dev := &Device{
@@ -199,7 +202,7 @@ func getMatchingInterface(ip net.IP) (*net.Interface, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("Failed to find matching interface for %s", ip)
+	return nil, fmt.Errorf("failed to find matching interface for %s", ip)
 }
 
 // getV4IPNetOfInterface finds the first Ipv4 address on an interface that is
@@ -223,8 +226,14 @@ func getV4IPNetOfInterface(iface *net.Interface) (*net.IPNet, error) {
 // getBroadcastAddress determines the broadcast address to use for
 // communicating with the device.
 func getBroadcastAddress(dev *Device) *net.UDPAddr {
-	iface, _ := getMatchingInterface(dev.IP)
-	ipNet, _ := getV4IPNetOfInterface(iface)
+	iface, err := getMatchingInterface(dev.IP)
+	if err != nil {
+		return nil
+	}
+	ipNet, err := getV4IPNetOfInterface(iface)
+	if err != nil || ipNet == nil {
+		return nil
+	}
 
 	mask := ipNet.Mask
 	bcastIPAddr := make(net.IP, net.IPv4len)
@@ -250,7 +259,7 @@ func newVirtualCDJDevice(iface *net.Interface, id DeviceID) (*Device, error) {
 	}
 
 	if ipNet == nil {
-		return nil, fmt.Errorf("No IPv4 broadcast interface available")
+		return nil, fmt.Errorf("no IPv4 broadcast interface available")
 	}
 
 	virtualCDJ := &Device{
@@ -392,6 +401,9 @@ func (n *Network) SetVirtualCDJID(id DeviceID) error {
 func (n *Network) SetInterface(iface *net.Interface) error {
 	lastInterface := n.TargetInterface
 
+	if err := n.devManager.setInterface(iface); err != nil {
+		return err
+	}
 	n.TargetInterface = iface
 	Log.Info("PROLINK interface updated", "iface", iface.Name)
 
@@ -399,6 +411,7 @@ func (n *Network) SetInterface(iface *net.Interface) error {
 	if err != nil {
 		Log.Warn("Bad interface, restoring previous interface", "err", err)
 		n.TargetInterface = lastInterface
+		n.devManager.setInterface(lastInterface)
 		n.reloadAnnouncer()
 	}
 
@@ -408,12 +421,12 @@ func (n *Network) SetInterface(iface *net.Interface) error {
 // AutoConfigure attempts to configure the two configuration parameters of the
 // network.
 //
-// - Determine which interface to announce the Virtual CDJ over by finding
-//   the interface which has a matching net mask to the first CDJ detected on the
-//   network.
+//   - Determine which interface to announce the Virtual CDJ over by finding
+//     the interface which has a matching net mask to the first CDJ detected on the
+//     network.
 //
-// - Determine the Virtual CDJ ID to assume by looking for the first unused CDJ
-//   ID on the network.
+//   - Determine the Virtual CDJ ID to assume by looking for the first unused CDJ
+//     ID on the network.
 //
 // wait specifies how long to wait before checking what devices have appeared
 // on the network to determine auto configuration values from.
@@ -436,7 +449,7 @@ func (n *Network) AutoConfigure(wait time.Duration) error {
 	}
 
 	if len(playerIDs) == 0 {
-		return fmt.Errorf("Could not autoconfigure network: no CDJs on network")
+		return fmt.Errorf("could not autoconfigure network: no CDJs on network")
 	}
 
 	var unusedDeviceID DeviceID
@@ -458,7 +471,7 @@ func (n *Network) AutoConfigure(wait time.Duration) error {
 	}
 
 	if unusedDeviceID == 0x0 {
-		return fmt.Errorf("Could not autoconfigure network: No available Virtual CDJ slots")
+		return fmt.Errorf("could not autoconfigure network: no available Virtual CDJ slots")
 	}
 
 	n.SetVirtualCDJID(unusedDeviceID)
@@ -466,7 +479,7 @@ func (n *Network) AutoConfigure(wait time.Duration) error {
 	// Determine the matching interface for the CDJ
 	iface, err := getMatchingInterface(CDJAddr)
 	if err != nil {
-		return fmt.Errorf("Could not autoconfigure network: %s", err)
+		return fmt.Errorf("could not autoconfigure network: %s", err)
 	}
 
 	n.SetInterface(iface)
@@ -481,7 +494,7 @@ func (n *Network) reloadAnnouncer() error {
 
 	vCDJ, err := newVirtualCDJDevice(n.TargetInterface, n.VirtualCDJID)
 	if err != nil {
-		return fmt.Errorf("Failed to construct virtual CDJ: %s", err)
+		return fmt.Errorf("failed to construct virtual CDJ: %s", err)
 	}
 
 	Log.Info("Reloading announcer")
@@ -503,7 +516,7 @@ func (n *Network) reloadAnnouncer() error {
 func (n *Network) openUDPConnections() error {
 	listenerConn, err := net.ListenUDP("udp", listenerAddr)
 	if err != nil {
-		return fmt.Errorf("Failed to open listener connection: %s", err)
+		return fmt.Errorf("failed to open listener connection: %s", err)
 	}
 
 	n.listenerConn = listenerConn
@@ -511,7 +524,7 @@ func (n *Network) openUDPConnections() error {
 
 	announceConn, err := net.ListenUDP("udp", announceAddr)
 	if err != nil {
-		return fmt.Errorf("Cannot open UDP announce connection: %s", err)
+		return fmt.Errorf("cannot open UDP announce connection: %s", err)
 	}
 
 	n.announceConn = announceConn
@@ -530,9 +543,9 @@ var activeNetwork *Network
 // interface to announce the virtual CDJ on before all functionality of the
 // prolink network will be available, specifically:
 //
-// - CDJs will not broadcast detailed payer information until they receive the
-//   announce packet and recognize the libraries virtual CDJ as being on the
-//   network.
+//   - CDJs will not broadcast detailed payer information until they receive the
+//     announce packet and recognize the libraries virtual CDJ as being on the
+//     network.
 //
 // - Any remote DB devices will not respond to metadata queries.
 //
