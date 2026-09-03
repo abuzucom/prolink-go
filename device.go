@@ -150,31 +150,30 @@ func (m *DeviceManager) ActiveDevices() []*Device {
 	return devices
 }
 
+func (m *DeviceManager) expireDevice(dev *Device) {
+	m.lock.Lock()
+	if m.devices[dev.ID] != dev {
+		m.lock.Unlock()
+		return
+	}
+	delete(m.devices, dev.ID)
+	delete(m.timers, dev.ID)
+	handlers := make([]DeviceListener, 0, len(m.delHandlers))
+	for _, handler := range m.delHandlers {
+		handlers = append(handlers, handler)
+	}
+	m.lock.Unlock()
+
+	Log.Info("Device timeout", "device", dev)
+	for _, handler := range handlers {
+		go handler.OnChange(dev)
+	}
+}
+
 // activate triggers the DeviceManager to begin watching for device changes on
 // the PRO DJ LINK network.
 func (m *DeviceManager) activate(announceConn *net.UDPConn) {
 	Log.Info("Now monitoring for PROLINK devices")
-
-	var expireDevice func(*Device)
-	expireDevice = func(dev *Device) {
-		m.lock.Lock()
-		if m.devices[dev.ID] != dev {
-			m.lock.Unlock()
-			return
-		}
-		delete(m.devices, dev.ID)
-		delete(m.timers, dev.ID)
-		handlers := make([]DeviceListener, 0, len(m.delHandlers))
-		for _, handler := range m.delHandlers {
-			handlers = append(handlers, handler)
-		}
-		m.lock.Unlock()
-
-		Log.Info("Device timeout", "device", dev)
-		for _, handler := range handlers {
-			go handler.OnChange(dev)
-		}
-	}
 
 	announceLock := sync.Mutex{}
 
@@ -232,7 +231,7 @@ func (m *DeviceManager) activate(announceConn *net.UDPConn) {
 		}
 		m.devices[dev.ID] = dev
 		m.timers[dev.ID] = time.AfterFunc(deviceTimeout, func() {
-			expireDevice(dev)
+			m.expireDevice(dev)
 		})
 		handlers := make([]DeviceListener, 0, len(m.addHandlers))
 		for _, handler := range m.addHandlers {
