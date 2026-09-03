@@ -167,8 +167,9 @@ behavior. The third edit adds the License section to `README.md`. None of the
 three moves its file to BSD-3-Clause. This adoption adds no SPDX header to an
 inherited source.
 
-## Pending template record
+## Template record
 
 `DRIFT.md` requires an `adopters/prolink-go.md` record inside
-`abuzucom/agents`. That record lists the taken and declined files above. The
-record ships as a separate change against that repository.
+`abuzucom/agents`. That record lists the taken and declined files above.
+`abuzucom/agents` merged the record at commit `bb6eba4` on top of template
+commit `d5e040e`.
