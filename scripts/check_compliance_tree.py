@@ -44,11 +44,8 @@ TRUSTED_ENVIRONMENT = {
     "PR_HEAD_REPOSITORY": "${{ github.event.pull_request.head.repo.full_name }}",
     "PR_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
     "PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
-    "PR_REPO": "pr-head",
+    "PR_REPO": "trusted-base",
     "TRUSTED_CHECKER": "trusted-base/scripts/check_compliance_tree.py",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES": (
-        "${{ github.workspace }}/trusted-base/.git/objects"
-    ),
 }
 SUPPORTED_ENTRIES = {
     (b"100644", b"blob"),
@@ -459,15 +456,15 @@ def _pull_target_trigger(document: dict) -> bool:
 
 def _checkout_step(base: bool) -> dict:
     """Return one exact trusted checkout step schema."""
-    role = "trusted base" if base else "pull request head"
-    prefix = "BASE" if base else "HEAD"
+    role = "trusted base"
+    prefix = "BASE"
     return {
         "name": f"Check out the exact {role}",
         "uses": CHECKOUT_ACTION,
         "with": {
             "repository": f"${{{{ env.PR_{prefix}_REPOSITORY }}}}",
             "ref": f"${{{{ env.PR_{prefix}_SHA }}}}",
-            "path": "trusted-base" if base else "pr-head",
+            "path": "trusted-base",
             "persist-credentials": False,
             "fetch-depth": 201,
         },
@@ -478,7 +475,17 @@ def _trusted_steps() -> list[dict]:
     """Return the exact privileged step sequence allowed for promotion."""
     return [
         _checkout_step(True),
-        _checkout_step(False),
+        {
+            "name": "Fetch the exact pull request object",
+            "env": {
+                "PR_HEAD_REPOSITORY": "${{ env.PR_HEAD_REPOSITORY }}",
+                "PR_HEAD_SHA": "${{ env.PR_HEAD_SHA }}",
+            },
+            "run": (
+                'git -C trusted-base fetch --no-tags --depth=1 '
+                '"https://github.com/$PR_HEAD_REPOSITORY.git" "$PR_HEAD_SHA"'
+            ),
+        },
         {
             "name": "Set up Python",
             "uses": SETUP_PYTHON_ACTION,

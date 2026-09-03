@@ -19,9 +19,8 @@ env:
   PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
   PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
   PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-  PR_REPO: pr-head
+  PR_REPO: trusted-base
   TRUSTED_CHECKER: trusted-base/scripts/check_compliance_tree.py
-  GIT_ALTERNATE_OBJECT_DIRECTORIES: ${{ github.workspace }}/trusted-base/.git/objects
 
 jobs:
   immutable-compliance:
@@ -37,14 +36,13 @@ jobs:
           path: trusted-base
           persist-credentials: false
           fetch-depth: 201
-      - name: Check out the exact pull request head
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: ${{ env.PR_HEAD_REPOSITORY }}
-          ref: ${{ env.PR_HEAD_SHA }}
-          path: pr-head
-          persist-credentials: false
-          fetch-depth: 201
+      - name: Fetch the exact pull request object
+        env:
+          PR_HEAD_REPOSITORY: ${{ env.PR_HEAD_REPOSITORY }}
+          PR_HEAD_SHA: ${{ env.PR_HEAD_SHA }}
+        run: >-
+          git -C trusted-base fetch --no-tags --depth=1
+          "https://github.com/$PR_HEAD_REPOSITORY.git" "$PR_HEAD_SHA"
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:

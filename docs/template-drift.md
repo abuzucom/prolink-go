@@ -42,7 +42,7 @@ present.
 ### Declined
 
 - None. The immutable workflow runs with read-only permissions and executes
-  only the trusted base checker against the PR tree.
+  only the trusted base checker against fetched PR objects.
 - `DRIFT.md` and `adopters/`. Both belong to the template repository.
 - The template `README.md`, `CHANGELOG.md`, `Makefile`, `LICENSE`, and
   `docs/gate-threat-model.md` as verbatim copies.
@@ -63,7 +63,8 @@ present.
   prose in the original author's voice. Rewriting it falls outside adoption
   scope under Rule 4. `make check` also runs `sync.py --check-shared`.
 - `.github/workflows/sync-check.yml`. Same job layout as the template:
-  `tests-windows`, `tests-linux`, `tests-macos`, and `check-sync`. The prose file lists name
+  `tests-windows`, `tests-linux`, `tests-macos`, and `check-sync`. The prose
+  file lists name
   this repository's prose. This repository drops the template's AgentLint
   step. No new third-party action dependency enters under Rule 9.
 - `.github/workflows/main.yml`. The inherited Go build workflow, with two
@@ -84,7 +85,8 @@ present.
 ### Active wiring assertions
 
 The immutable workflow assertions and scanner checks remain active. The
-preserved pin check covers every workflow this repository ships.
+workflow fetches PR objects without checking out PR files. The preserved pin
+check covers every workflow this repository ships.
 
 ### Environment limitations
 

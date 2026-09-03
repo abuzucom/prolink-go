@@ -39,6 +39,7 @@ Public API stability starts at `1.0.0`.
 
 - `README.md` gained a License section describing the split license.
 - Compliance workflows run on pull requests and use trusted immutable scans.
+- Trusted immutable scans fetch PR objects without checking out PR files.
 - Checker dependency installation enforces PyYAML artifact hashes.
 - The policy test suite runs on Linux, macOS, and Windows.
 - `.claudeignore` and `.editorconfig` adapted to Go paths and gofmt tabs.

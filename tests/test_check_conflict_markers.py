@@ -660,9 +660,11 @@ class WiringTest(unittest.TestCase):
             r"uses: actions/setup-python@[0-9a-f]{40}",
         )
         self.assertIn("ref: ${{ env.PR_BASE_SHA }}", content)
-        self.assertIn("ref: ${{ env.PR_HEAD_SHA }}", content)
+        self.assertIn("PR_HEAD_SHA: ${{ env.PR_HEAD_SHA }}", content)
         self.assertIn("path: trusted-base", content)
-        self.assertIn("path: pr-head", content)
+        self.assertIn("Fetch the exact pull request object", content)
+        self.assertIn('git -C trusted-base fetch --no-tags', content)
+        self.assertNotIn("path: pr-head", content)
         self.assertIn(
             "TRUSTED_CHECKER: trusted-base/scripts/check_compliance_tree.py",
             content,
@@ -678,8 +680,9 @@ class WiringTest(unittest.TestCase):
         block = jobs["immutable-compliance"]
         self.assertIn("    permissions:\n      contents: read", block)
         self.assertIn("ref: ${{ env.PR_BASE_SHA }}", block)
-        self.assertIn("ref: ${{ env.PR_HEAD_SHA }}", block)
+        self.assertIn("PR_HEAD_SHA: ${{ env.PR_HEAD_SHA }}", block)
         self.assertNotIn("working-directory:", block)
+        self.assertNotIn("path: pr-head", block)
         self.assertNotIn("pull-requests: write", content)
         self.assertNotIn("actions/github-script", content)
 
@@ -715,7 +718,7 @@ class WiringTest(unittest.TestCase):
         content = IMMUTABLE_WORKFLOW_PATH.read_text(encoding="utf-8")
         block = _workflow_jobs(content)["immutable-compliance"]
         self.assertIn("path: trusted-base", block)
-        self.assertIn("path: pr-head", block)
+        self.assertIn("git -C trusted-base fetch", block)
         self.assertIn('python "$TRUSTED_CHECKER"', block)
         self.assertIn('--repo "$PR_REPO" --tree "$PR_HEAD_SHA"', block)
         self.assertNotRegex(block, r"python (?:\.\./)?pr-head/")
