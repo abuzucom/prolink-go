@@ -80,14 +80,14 @@ type DeviceManager struct {
 
 func (m *DeviceManager) setInterface(iface *net.Interface) error {
 	if iface == nil {
-		return fmt.Errorf("No network interface provided")
+		return fmt.Errorf("no network interface provided")
 	}
 	ipNet, err := getV4IPNetOfInterface(iface)
 	if err != nil {
 		return err
 	}
 	if ipNet == nil {
-		return fmt.Errorf("No IPv4 address available on interface")
+		return fmt.Errorf("no IPv4 address available on interface")
 	}
 	m.lock.Lock()
 	m.allowedNet = &net.IPNet{

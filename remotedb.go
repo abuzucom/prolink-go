@@ -13,7 +13,7 @@ import (
 
 // ErrDeviceNotLinked is returned by RemoteDB if the device being queried is
 // not currently 'linked' on the network.
-var ErrDeviceNotLinked = fmt.Errorf("The device is not linked on the network")
+var ErrDeviceNotLinked = fmt.Errorf("the device is not linked on the network")
 
 // allowedDevices specify what device types act as a remote DB server
 var allowedDevices = map[DeviceType]bool{
