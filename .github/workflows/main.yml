@@ -10,14 +10,14 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      # actions/setup-go v3.6.1
-      - uses: actions/setup-go@be3c94b385c4f180051c996d336f57a34c397495
+      # actions/setup-go v7.0.0, Node 24
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: ^1.13
 
       - name: golangci-lint
-        # golangci/golangci-lint-action v3.7.0
-        uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc
+        # golangci/golangci-lint-action v9.3.0, Node 24
+        uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893
 
       - name: Build
         run: go build cmd/status-reciever/main.go
