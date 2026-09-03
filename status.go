@@ -187,7 +187,7 @@ func (s *CDJStatus) String() string {
 
 func packetToStatus(p []byte) (*CDJStatus, error) {
 	if !bytes.HasPrefix(p, prolinkHeader) {
-		return nil, fmt.Errorf("CDJ status packet does not start with the expected header")
+		return nil, fmt.Errorf("cdj status packet does not start with the expected header")
 	}
 
 	if len(p) < 0xFF {

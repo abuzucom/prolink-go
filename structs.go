@@ -519,7 +519,7 @@ func readMessagePacket(conn io.Reader) (*genericPacket, error) {
 	// Ensure preamble matches the magic byte, otherwise this is not a Pioneer
 	// PRO LINK message packet.
 	if d, ok := preamble.(fieldNumber04); !ok || uint32(d) != pioneerMagic {
-		return nil, fmt.Errorf("Invalid packet, does not contain magic preamble")
+		return nil, fmt.Errorf("invalid packet, does not contain magic preamble")
 	}
 
 	// Read the next four standard message fields
@@ -674,5 +674,5 @@ func readField(conn io.Reader) (field, error) {
 		return fieldBinary(data), nil
 	}
 
-	return nil, fmt.Errorf("Invalid field Type: %x", fieldType[0])
+	return nil, fmt.Errorf("invalid field type: %x", fieldType[0])
 }
