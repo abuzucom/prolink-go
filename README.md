@@ -76,6 +76,15 @@ st.AddStatusHandler(prolink.StatusHandlerFunc(statusChange));
   CDJs on the network will only allow you to read track metadata through
   linked Rekordbox.
 
+### Network security
+
+PRO DJ LINK does not authenticate network peers. Run this library on a
+dedicated wired or isolated network that contains only trusted DJ equipment
+and approved computers. The library rejects announcements whose sender
+address does not match the advertised device address. Remote protocol fields
+have bounded sizes and malformed packets are rejected. Status callbacks use a
+bounded queue, so excess updates may be dropped during overload.
+
 ### License
 
 This repository carries a split license. Files inherited from the initial fork

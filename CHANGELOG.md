@@ -46,6 +46,10 @@ Public API stability starts at `1.0.0`.
 
 ### Fixed
 
+- Hardened PRO DJ LINK input handling against spoofed announcements, malformed
+  remote database packets, oversized fields, device state races, and unbounded
+  status callback goroutines.
+
 - `.github/workflows/main.yml` sets `persist-credentials: false` on the
   `actions/checkout` step. The default left the ephemeral `GITHUB_TOKEN` in the
   runner git configuration for the rest of the job.

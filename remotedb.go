@@ -14,7 +14,7 @@ import (
 
 // ErrDeviceNotLinked is returned by RemoteDB if the device being queried is
 // not currently 'linked' on the network.
-var ErrDeviceNotLinked = fmt.Errorf("The device is not linked on the network")
+var ErrDeviceNotLinked = fmt.Errorf("the device is not linked on the network")
 
 // allowedDevices specify what device types act as a remote DB server
 var allowedDevices = map[DeviceType]bool{
@@ -25,13 +25,14 @@ var allowedDevices = map[DeviceType]bool{
 // rbDBServerQueryPort is the consistent port on which we can query the remote
 // db server for the port to connect to to communicate with it.
 const rbDBServerQueryPort = 12523
+const remoteDBConnectTimeout = 5 * time.Second
 
 // getRemoteDBServerAddr queries the remote device for the port that the remote
 // database server is listening on for requests.
 func getRemoteDBServerAddr(deviceIP net.IP) (string, error) {
 	addr := net.JoinHostPort(deviceIP.String(), strconv.Itoa(rbDBServerQueryPort))
 
-	conn, err := net.Dial("tcp", addr)
+	conn, err := net.DialTimeout("tcp", addr, remoteDBConnectTimeout)
 	if err != nil {
 		return "", err
 	}
@@ -49,18 +50,21 @@ func getRemoteDBServerAddr(deviceIP net.IP) (string, error) {
 	// Request for the port
 	_, err = conn.Write(queryPacket)
 	if err != nil {
-		return "", fmt.Errorf("Failed to query remote DB Server port: %s", err)
+		return "", fmt.Errorf("failed to query remote DB Server port: %s", err)
 	}
 
 	// Read request response, should be a two byte uint16
 	data := make([]byte, 2)
 
-	_, err = conn.Read(data)
+	_, err = io.ReadFull(conn, data)
 	if err != nil {
-		return "", fmt.Errorf("Failed to retrieve remote DB Server port: %s", err)
+		return "", fmt.Errorf("failed to retrieve remote DB Server port: %s", err)
 	}
 
 	port := binary.BigEndian.Uint16(data)
+	if port == 0 {
+		return "", fmt.Errorf("remote DB server returned an invalid port")
+	}
 
 	return net.JoinHostPort(deviceIP.String(), strconv.Itoa(int(port))), nil
 }
@@ -86,19 +90,20 @@ func (dc *deviceConnection) connect() error {
 		return err
 	}
 
-	conn, err := net.Dial("tcp", addr)
+	conn, err := net.DialTimeout("tcp", addr, remoteDBConnectTimeout)
 	if err != nil {
 		return err
 	}
 
 	if err := conn.SetDeadline(time.Now().Add(dc.timeout)); err != nil {
+		conn.Close()
 		return err
 	}
 
 	// Begin connection to the remote database
 	preamble := fieldNumber04(0x01)
 	if _, err = conn.Write(preamble.bytes()); err != nil {
-		return fmt.Errorf("Failed to connect to remote database: %s", err)
+		return fmt.Errorf("failed to connect to remote database: %s", err)
 	}
 
 	// No need to keep this response, but it should be a uin32 field, which is
@@ -110,7 +115,7 @@ func (dc *deviceConnection) connect() error {
 	}
 
 	if _, err = conn.Write(introPacket.bytes()); err != nil {
-		return fmt.Errorf("Failed to connect to remote database: %s", err)
+		return fmt.Errorf("failed to connect to remote database: %s", err)
 	}
 
 	if _, err := readMessagePacket(conn); err != nil {
@@ -290,7 +295,7 @@ func (rd *RemoteDB) executeQuery(q *TrackKey) (*Track, error) {
 	defer lock.Unlock()
 
 	if _, ok := rd.conns[q.DeviceID]; !ok {
-		return nil, fmt.Errorf("Device disconnected during query")
+		return nil, fmt.Errorf("device disconnected during query")
 	}
 
 	track, err := rd.queryTrackMetadata(q)
@@ -406,7 +411,7 @@ func (rd *RemoteDB) getMenuItems(devID DeviceID, p1, p2 messagePacket) (menuItem
 	}
 
 	if resp.messageType != msgTypeResponse {
-		return nil, fmt.Errorf("Invalid menu items request, got response type %#x", resp.messageType)
+		return nil, fmt.Errorf("invalid menu items request, got response type %#x", resp.messageType)
 	}
 
 	if err := rd.sendMessage(devID, p2); err != nil {
@@ -414,7 +419,14 @@ func (rd *RemoteDB) getMenuItems(devID DeviceID, p1, p2 messagePacket) (menuItem
 	}
 
 	// Add 2 for the menu header / footer
-	entryCount := int(resp.arguments[1].(fieldNumber04)) + 2
+	if len(resp.arguments) < 2 {
+		return nil, fmt.Errorf("menu response has too few arguments")
+	}
+	entryCountValue, ok := resp.arguments[1].(fieldNumber04)
+	if !ok {
+		return nil, fmt.Errorf("menu response entry count has an invalid type")
+	}
+	entryCount := int(entryCountValue) + 2
 
 	items := map[byte]*menuItem{}
 
@@ -428,7 +440,10 @@ func (rd *RemoteDB) getMenuItems(devID DeviceID, p1, p2 messagePacket) (menuItem
 			continue
 		}
 
-		item := makeMenuItem(entry)
+		item, err := makeMenuItem(entry)
+		if err != nil {
+			return nil, err
+		}
 		items[item.itemType] = item
 	}
 
@@ -454,10 +469,17 @@ func (rd *RemoteDB) getArtwork(q *TrackKey) ([]byte, error) {
 	}
 
 	if resp.messageType != msgTypeArtwork {
-		return nil, fmt.Errorf("Invalid artwork request, got response type %#x", resp.messageType)
+		return nil, fmt.Errorf("invalid artwork request, got response type %#x", resp.messageType)
+	}
+	if len(resp.arguments) < 4 {
+		return nil, fmt.Errorf("artwork response has too few arguments")
+	}
+	artwork, ok := resp.arguments[3].(fieldBinary)
+	if !ok {
+		return nil, fmt.Errorf("artwork response has an invalid data type")
 	}
 
-	return []byte(resp.arguments[3].(fieldBinary)), nil
+	return []byte(artwork), nil
 }
 
 // sendMessage writes a message packet to the open connection and increments
