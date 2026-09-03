@@ -26,6 +26,9 @@ WORKFLOW_PATH = (
 AGENTS_MD_WORKFLOW_PATH = (
     REPO_ROOT / ".github" / "workflows" / "agents-md-compliance.yml"
 )
+IMMUTABLE_WORKFLOW_PATH = (
+    REPO_ROOT / ".github" / "workflows" / "immutable-conflict-check.yml"
+)
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
 PRE_COMMIT_CONFIG_PATH = REPO_ROOT / ".pre-commit-config.yaml"
 AGENTS_PATH = REPO_ROOT / "AGENTS.md"
@@ -648,10 +651,74 @@ class WiringTest(unittest.TestCase):
         )
         self.assertIn(expected, content)
 
-    # The five immutable-tree assertions that stood here are removed. They
-    # read .github/workflows/immutable-conflict-check.yml, which this
-    # repository declined together with scripts/check_compliance_tree.py.
-    # See docs/template-drift.md.
+    def test_immutable_workflow_uses_only_the_base_checker(self):
+        content = IMMUTABLE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertEqual(_workflow_events(content), {"pull_request_target"})
+        self.assertIn("edited", content)
+        self.assertRegex(
+            content,
+            r"uses: actions/setup-python@[0-9a-f]{40}",
+        )
+        self.assertIn("ref: ${{ env.PR_BASE_SHA }}", content)
+        self.assertIn("ref: ${{ env.PR_HEAD_SHA }}", content)
+        self.assertIn("path: trusted-base", content)
+        self.assertIn("path: pr-head", content)
+        self.assertIn(
+            "TRUSTED_CHECKER: trusted-base/scripts/check_compliance_tree.py",
+            content,
+        )
+        self.assertIn('python "$TRUSTED_CHECKER"', content)
+        self.assertIn('--repo "$PR_REPO" --tree "$PR_HEAD_SHA"', content)
+        self.assertNotIn("python pr-head/", content)
+
+    def test_privileged_workflow_has_one_immutable_job(self):
+        content = IMMUTABLE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        jobs = _workflow_jobs(content)
+        self.assertEqual(set(jobs), {"immutable-compliance"})
+        block = jobs["immutable-compliance"]
+        self.assertIn("    permissions:\n      contents: read", block)
+        self.assertIn("ref: ${{ env.PR_BASE_SHA }}", block)
+        self.assertIn("ref: ${{ env.PR_HEAD_SHA }}", block)
+        self.assertNotIn("working-directory:", block)
+        self.assertNotIn("pull-requests: write", content)
+        self.assertNotIn("actions/github-script", content)
+
+    def test_privileged_workflow_does_not_execute_pr_authored_tools(self):
+        content = IMMUTABLE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("python -m unittest", content)
+        self.assertNotRegex(content, r"run:\s+python scripts/")
+        self.assertNotIn("0xmariowu/AgentLint", content)
+
+    def test_privileged_trigger_has_read_only_permissions_and_no_secrets(self):
+        content = IMMUTABLE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("secrets.", content.lower())
+        self.assertNotIn("write-all", content.lower())
+        self.assertIn("permissions:\n  contents: read", content)
+        for job_id, block in _workflow_jobs(content).items():
+            with self.subTest(job=job_id):
+                match = re.search(
+                    r"^    permissions:\n((?:      [^\n]+\n?)+)",
+                    block,
+                    re.MULTILINE,
+                )
+                self.assertIsNotNone(match)
+                self.assertEqual(
+                    [line.strip() for line in match.group(1).splitlines()],
+                    ["contents: read"],
+                )
+        self.assertNotRegex(
+            content,
+            r"(?m)^\s+[a-z-]+:\s*(?:write|write-all)\s*$",
+        )
+
+    def test_security_jobs_use_trusted_base_checkers(self):
+        content = IMMUTABLE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        block = _workflow_jobs(content)["immutable-compliance"]
+        self.assertIn("path: trusted-base", block)
+        self.assertIn("path: pr-head", block)
+        self.assertIn('python "$TRUSTED_CHECKER"', block)
+        self.assertIn('--repo "$PR_REPO" --tree "$PR_HEAD_SHA"', block)
+        self.assertNotRegex(block, r"python (?:\.\./)?pr-head/")
 
     def test_untrusted_checks_use_the_standard_pull_request_event(self):
         sync_content = WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -659,7 +726,9 @@ class WiringTest(unittest.TestCase):
             encoding="utf-8")
         self.assertEqual(
             _workflow_events(sync_content), {"push", "pull_request"})
-        self.assertEqual(_workflow_events(compliance_content), {"push"})
+        self.assertEqual(
+            _workflow_events(compliance_content), {"push", "pull_request"}
+        )
         self.assertNotIn("pull_request_target", sync_content)
         self.assertNotIn("pull-requests: write", sync_content)
         self.assertNotIn("actions/github-script", sync_content)
@@ -667,6 +736,8 @@ class WiringTest(unittest.TestCase):
     def test_pr_draft_semantics_remain_explicit(self):
         sync_jobs = _workflow_jobs(WORKFLOW_PATH.read_text(encoding="utf-8"))
         self.assertNotIn("draft", sync_jobs["check-sync"])
+        privileged = IMMUTABLE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("draft == false", privileged)
 
     # README_PATH is dropped from both handoff loops. README.md here is the
     # inherited MIT prose of a Go library, not the template's policy README.

@@ -17,6 +17,7 @@ except ImportError:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CHECKER_PATH = REPO_ROOT / "scripts" / "check_compliance_tree.py"
 WORKFLOW_ROOT = REPO_ROOT / ".github" / "workflows"
+WORKFLOW_PATH = WORKFLOW_ROOT / "immutable-conflict-check.yml"
 SYNTHETIC_SECRET = "ghp_" + ("A" * 36)
 FULL_SHA = re.compile(r"[0-9a-fA-F]{40}")
 SCANNER_REQUEST_TIMEOUT_SECONDS = 60.0
@@ -347,6 +348,49 @@ class ImmutableComplianceScannerTest(unittest.TestCase):
 
             self._assert_detected(repo, tree, path, "commit sha")
 
+    def test_current_privileged_workflow_policy_passes(self):
+        with RetryingTemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            _initialize_repo(repo)
+            _write_file(
+                repo, ".github/workflows/immutable.yml",
+                WORKFLOW_PATH.read_text(encoding="utf-8"),
+            )
+            tree = _commit_all(repo, "test: add trusted workflow")
+
+            result = _scan_tree(repo, tree)
+            self.assertEqual(result.returncode, 0, _scan_output(result))
+
+    def test_privileged_checkout_cannot_redirect_trusted_base(self):
+        with RetryingTemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            _initialize_repo(repo)
+            content = WORKFLOW_PATH.read_text(encoding="utf-8").replace(
+                "repository: ${{ env.PR_BASE_REPOSITORY }}",
+                "repository: ${{ env.PR_HEAD_REPOSITORY }}",
+                1,
+            )
+            path = ".github/workflows/immutable.yml"
+            _write_file(repo, path, content)
+            tree = _commit_all(repo, "test: redirect trusted checkout")
+
+            self._assert_detected(repo, tree, path, "job schema")
+
+    def test_privileged_scan_cannot_continue_on_error(self):
+        with RetryingTemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            _initialize_repo(repo)
+            content = WORKFLOW_PATH.read_text(encoding="utf-8").replace(
+                "      - name: Scan immutable pull request objects",
+                "      - continue-on-error: true\n"
+                "        name: Scan immutable pull request objects",
+            )
+            path = ".github/workflows/immutable.yml"
+            _write_file(repo, path, content)
+            tree = _commit_all(repo, "test: weaken trusted scan")
+
+            self._assert_detected(repo, tree, path, "job schema")
+
     def test_branch_and_pr_author_are_checked_without_base(self):
         with RetryingTemporaryDirectory() as temporary:
             repo = Path(temporary)
@@ -422,14 +466,7 @@ class ImmutableComplianceScannerTest(unittest.TestCase):
 
 
 class WorkflowPinningTest(unittest.TestCase):
-    """Every external action reference pins a full commit SHA.
-
-    The privileged-workflow assertions that stood beside this one are removed.
-    They read .github/workflows/immutable-conflict-check.yml, which this
-    repository declined. This check reads only the workflow directory, so it
-    still covers every workflow this repository ships.
-    See docs/template-drift.md.
-    """
+    """Every external action reference pins a full commit SHA."""
 
     def test_external_actions_are_pinned_to_full_commit_shas(self):
         paths = [

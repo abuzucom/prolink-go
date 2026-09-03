@@ -32,7 +32,8 @@ present.
 - `.gitattributes`, `.editorconfig`, `.claudeignore`,
   `.pre-commit-config.yaml`, `requirements-checkers.txt`.
 - `.github/workflows/sync-check.yml`, `.github/workflows/agents-compliance.yml`,
-  and `.github/workflows/agents-md-compliance.yml`.
+  `.github/workflows/agents-md-compliance.yml`, and
+  `.github/workflows/immutable-conflict-check.yml`.
 - `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE.md`.
 - `SECURITY.md`, `CONTRIBUTING.md`, `plan/HANDOFF.md`, filled from the
   matching `.example` files. `plan/HANDOFF.md.example` stays in the tree
@@ -40,11 +41,8 @@ present.
 
 ### Declined
 
-- `.github/workflows/immutable-conflict-check.yml`. The workflow runs on the
-  privileged `pull_request_target` trigger. Adopting a privileged trigger is a
-  security decision this repository did not take.
-  `scripts/check_compliance_tree.py` ships anyway. Twelve of the scanner
-  tests covering it still run.
+- None. The immutable workflow runs with read-only permissions and executes
+  only the trusted base checker against the PR tree.
 - `DRIFT.md` and `adopters/`. Both belong to the template repository.
 - The template `README.md`, `CHANGELOG.md`, `Makefile`, `LICENSE`, and
   `docs/gate-threat-model.md` as verbatim copies.
@@ -65,7 +63,7 @@ present.
   prose in the original author's voice. Rewriting it falls outside adoption
   scope under Rule 4. `make check` also runs `sync.py --check-shared`.
 - `.github/workflows/sync-check.yml`. Same job layout as the template:
-  `tests-windows`, `tests-macos`, and `check-sync`. The prose file lists name
+  `tests-windows`, `tests-linux`, `tests-macos`, and `check-sync`. The prose file lists name
   this repository's prose. This repository drops the template's AgentLint
   step. No new third-party action dependency enters under Rule 9.
 - `.github/workflows/main.yml`. The inherited Go build workflow, with two
@@ -83,45 +81,10 @@ present.
   `python scripts/sync.py --write-shared`. The digests match the template files
   as copied.
 
-### Declined wiring assertions
+### Active wiring assertions
 
-Two test files carried assertions that hold only inside `abuzucom/agents`. An
-active human signed off on each edit under Rule 3. Every other assertion in
-both files stays byte-identical. No assertion became softer. Neither edit
-skipped or widened an assertion.
-
-`tests/test_check_conflict_markers.py`, class `WiringTest`:
-
-- Removed `test_immutable_workflow_uses_only_the_base_checker`,
-  `test_privileged_workflow_has_one_immutable_job`,
-  `test_privileged_workflow_does_not_execute_pr_authored_tools`,
-  `test_privileged_trigger_has_read_only_permissions_and_no_secrets`, and
-  `test_security_jobs_use_trusted_base_checkers`. All five read the declined
-  `immutable-conflict-check.yml`.
-- Removed the `IMMUTABLE_WORKFLOW_PATH` half of
-  `test_untrusted_checks_use_the_standard_pull_request_event` and
-  `test_pr_draft_semantics_remain_explicit`. Each keeps every `sync-check.yml`
-  assertion. The first also keeps its `agents-md-compliance.yml` assertion.
-- Dropped `README_PATH` from `test_handoff_requires_active_user_request` and
-  `test_handoff_prescribes_no_pre_consent_git_command`. Both still assert
-  against `AGENTS.md` and `plan/HANDOFF.md.example`. Both carry every asserted
-  policy string. This repository's `README.md` documents a Go library rather
-  than the template's policy.
-
-`tests/test_immutable_compliance.py`:
-
-- Removed `test_current_privileged_workflow_policy_passes`,
-  `test_privileged_checkout_cannot_redirect_trusted_base`, and
-  `test_privileged_scan_cannot_continue_on_error` from
-  `ImmutableComplianceScannerTest`. All three read the declined workflow.
-- Replaced `ImmutableWorkflowTest` with `WorkflowPinningTest`, preserving
-  `test_external_actions_are_pinned_to_full_commit_shas`. That check reads only
-  the workflow directory through a glob. It keeps covering every workflow
-  this repository ships. The rest of the class read the declined workflow.
-- Removed the now-unused `WORKFLOW_PATH` constant.
-
-The preserved pin check reported a finding immediately. The inherited
-`main.yml` referenced three actions by tag. Rule 9 forbids that form.
+The immutable workflow assertions and scanner checks remain active. The
+preserved pin check covers every workflow this repository ships.
 
 ### Environment limitations
 
