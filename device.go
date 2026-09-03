@@ -73,12 +73,37 @@ type DeviceManager struct {
 	delHandlers map[string]DeviceListener
 	addHandlers map[string]DeviceListener
 	devices     map[DeviceID]*Device
+	timers      map[DeviceID]*time.Timer
+	allowedNet  *net.IPNet
+	lock        sync.RWMutex
+}
+
+func (m *DeviceManager) setInterface(iface *net.Interface) error {
+	if iface == nil {
+		return fmt.Errorf("No network interface provided")
+	}
+	ipNet, err := getV4IPNetOfInterface(iface)
+	if err != nil {
+		return err
+	}
+	if ipNet == nil {
+		return fmt.Errorf("No IPv4 address available on interface")
+	}
+	m.lock.Lock()
+	m.allowedNet = &net.IPNet{
+		IP:   append(net.IP(nil), ipNet.IP...),
+		Mask: append(net.IPMask(nil), ipNet.Mask...),
+	}
+	m.lock.Unlock()
+	return nil
 }
 
 // OnDeviceAdded registers a listener that will be called when any PRO DJ LINK
 // devices are added to the network. Provide a key if you wish to remove the
 // handler later with RemoveListener by specifying the same key.
 func (m *DeviceManager) OnDeviceAdded(key string, fn DeviceListener) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	m.addHandlers[key] = fn
 }
 
@@ -86,6 +111,8 @@ func (m *DeviceManager) OnDeviceAdded(key string, fn DeviceListener) {
 // LINK devices are removed from the network. Provide a key if you wish to
 // remove the handler later with RemoveListener by specifying the same key.
 func (m *DeviceManager) OnDeviceRemoved(key string, fn DeviceListener) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	m.delHandlers[key] = fn
 }
 
@@ -93,17 +120,27 @@ func (m *DeviceManager) OnDeviceRemoved(key string, fn DeviceListener) {
 // OnDeviceAdded or OnDeviceRemoved. Use the key you provided when adding the
 // handler.
 func (m *DeviceManager) RemoveListener(key string, fn DeviceListener) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	delete(m.addHandlers, key)
 	delete(m.delHandlers, key)
 }
 
 // ActiveDeviceMap returns a mapping of device IDs to their associated devices.
 func (m *DeviceManager) ActiveDeviceMap() map[DeviceID]*Device {
-	return m.devices
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	devices := make(map[DeviceID]*Device, len(m.devices))
+	for id, device := range m.devices {
+		devices[id] = device
+	}
+	return devices
 }
 
 // ActiveDevices returns a list of active devices on the PRO DJ LINK network.
 func (m *DeviceManager) ActiveDevices() []*Device {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 	devices := make([]*Device, 0, len(m.devices))
 
 	for _, dev := range m.devices {
@@ -116,26 +153,26 @@ func (m *DeviceManager) ActiveDevices() []*Device {
 // activate triggers the DeviceManager to begin watching for device changes on
 // the PRO DJ LINK network.
 func (m *DeviceManager) activate(announceConn *net.UDPConn) {
-	timeouts := map[DeviceID]*time.Timer{}
-	timeoutsLock := sync.Mutex{}
-
 	Log.Info("Now monitoring for PROLINK devices")
 
-	timeoutTimer := func(dev *Device) {
-		timeoutsLock.Lock()
-		defer timeoutsLock.Unlock()
-
-		timeouts[dev.ID] = time.NewTimer(deviceTimeout)
-		<-timeouts[dev.ID].C
-
-		// Device timeout expired. No longer active
-		delete(timeouts, dev.ID)
+	var expireDevice func(*Device)
+	expireDevice = func(dev *Device) {
+		m.lock.Lock()
+		if m.devices[dev.ID] != dev {
+			m.lock.Unlock()
+			return
+		}
 		delete(m.devices, dev.ID)
+		delete(m.timers, dev.ID)
+		handlers := make([]DeviceListener, 0, len(m.delHandlers))
+		for _, handler := range m.delHandlers {
+			handlers = append(handlers, handler)
+		}
+		m.lock.Unlock()
 
 		Log.Info("Device timeout", "device", dev)
-
-		for _, h := range m.delHandlers {
-			go h.OnChange(dev)
+		for _, handler := range handlers {
+			go handler.OnChange(dev)
 		}
 	}
 
@@ -144,9 +181,22 @@ func (m *DeviceManager) activate(announceConn *net.UDPConn) {
 	announceHandler := func() {
 		packet := make([]byte, announcePacketLen)
 
-		announceConn.Read(packet)
-		dev, err := deviceFromAnnouncePacket(packet)
+		n, source, err := announceConn.ReadFromUDP(packet)
+		if err != nil || n != announcePacketLen || source == nil {
+			return
+		}
+		dev, err := deviceFromAnnouncePacket(packet[:n])
 		if err != nil {
+			return
+		}
+		if !source.IP.Equal(dev.IP) || source.IP.IsLoopback() ||
+			source.IP.IsUnspecified() || source.IP.IsMulticast() {
+			return
+		}
+		m.lock.RLock()
+		allowed := m.allowedNet == nil || m.allowedNet.Contains(dev.IP)
+		m.lock.RUnlock()
+		if !allowed {
 			return
 		}
 
@@ -154,32 +204,47 @@ func (m *DeviceManager) activate(announceConn *net.UDPConn) {
 			return
 		}
 
+		m.lock.Lock()
 		// Update device keepalive
-		if dev, ok := m.devices[dev.ID]; ok {
-			timeout, ok := timeouts[dev.ID]
+		if existing, ok := m.devices[dev.ID]; ok {
+			timeout, ok := m.timers[dev.ID]
 			if !ok {
+				m.lock.Unlock()
 				return
 			}
 
 			timeout.Stop()
 			timeout.Reset(deviceTimeout)
-			dev.LastActive = time.Now()
+			existing.LastActive = time.Now()
+			m.lock.Unlock()
 			return
 		}
+		m.lock.Unlock()
 
 		announceLock.Lock()
 		defer announceLock.Unlock()
 
 		// New device
+		m.lock.Lock()
+		if _, exists := m.devices[dev.ID]; exists {
+			m.lock.Unlock()
+			return
+		}
 		m.devices[dev.ID] = dev
+		m.timers[dev.ID] = time.AfterFunc(deviceTimeout, func() {
+			expireDevice(dev)
+		})
+		handlers := make([]DeviceListener, 0, len(m.addHandlers))
+		for _, handler := range m.addHandlers {
+			handlers = append(handlers, handler)
+		}
+		m.lock.Unlock()
 
 		Log.Info("New device tracked", "device", dev)
 
-		for _, h := range m.addHandlers {
-			go h.OnChange(dev)
+		for _, handler := range handlers {
+			go handler.OnChange(dev)
 		}
-
-		go timeoutTimer(dev)
 	}
 
 	// Begin listening for announce packets
@@ -195,5 +260,6 @@ func newDeviceManager() *DeviceManager {
 		addHandlers: map[string]DeviceListener{},
 		delHandlers: map[string]DeviceListener{},
 		devices:     map[DeviceID]*Device{},
+		timers:      map[DeviceID]*time.Timer{},
 	}
 }

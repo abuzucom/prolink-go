@@ -132,6 +132,9 @@ func getStatusPacket(dev *Device) []byte {
 // deviceFromAnnouncePacket constructs a device object given a device
 // announcement packet.
 func deviceFromAnnouncePacket(packet []byte) (*Device, error) {
+	if len(packet) < announcePacketLen {
+		return nil, fmt.Errorf("Announce packet is too short")
+	}
 	if !bytes.HasPrefix(packet, prolinkHeader) {
 		return nil, fmt.Errorf("Announce packet does not start with expected header")
 	}
@@ -223,8 +226,14 @@ func getV4IPNetOfInterface(iface *net.Interface) (*net.IPNet, error) {
 // getBroadcastAddress determines the broadcast address to use for
 // communicating with the device.
 func getBroadcastAddress(dev *Device) *net.UDPAddr {
-	iface, _ := getMatchingInterface(dev.IP)
-	ipNet, _ := getV4IPNetOfInterface(iface)
+	iface, err := getMatchingInterface(dev.IP)
+	if err != nil {
+		return nil
+	}
+	ipNet, err := getV4IPNetOfInterface(iface)
+	if err != nil || ipNet == nil {
+		return nil
+	}
 
 	mask := ipNet.Mask
 	bcastIPAddr := make(net.IP, net.IPv4len)
@@ -392,6 +401,9 @@ func (n *Network) SetVirtualCDJID(id DeviceID) error {
 func (n *Network) SetInterface(iface *net.Interface) error {
 	lastInterface := n.TargetInterface
 
+	if err := n.devManager.setInterface(iface); err != nil {
+		return err
+	}
 	n.TargetInterface = iface
 	Log.Info("PROLINK interface updated", "iface", iface.Name)
 
@@ -399,6 +411,7 @@ func (n *Network) SetInterface(iface *net.Interface) error {
 	if err != nil {
 		Log.Warn("Bad interface, restoring previous interface", "err", err)
 		n.TargetInterface = lastInterface
+		n.devManager.setInterface(lastInterface)
 		n.reloadAnnouncer()
 	}
 
@@ -408,12 +421,12 @@ func (n *Network) SetInterface(iface *net.Interface) error {
 // AutoConfigure attempts to configure the two configuration parameters of the
 // network.
 //
-// - Determine which interface to announce the Virtual CDJ over by finding
-//   the interface which has a matching net mask to the first CDJ detected on the
-//   network.
+//   - Determine which interface to announce the Virtual CDJ over by finding
+//     the interface which has a matching net mask to the first CDJ detected on the
+//     network.
 //
-// - Determine the Virtual CDJ ID to assume by looking for the first unused CDJ
-//   ID on the network.
+//   - Determine the Virtual CDJ ID to assume by looking for the first unused CDJ
+//     ID on the network.
 //
 // wait specifies how long to wait before checking what devices have appeared
 // on the network to determine auto configuration values from.
@@ -530,9 +543,9 @@ var activeNetwork *Network
 // interface to announce the virtual CDJ on before all functionality of the
 // prolink network will be available, specifically:
 //
-// - CDJs will not broadcast detailed payer information until they receive the
-//   announce packet and recognize the libraries virtual CDJ as being on the
-//   network.
+//   - CDJs will not broadcast detailed payer information until they receive the
+//     announce packet and recognize the libraries virtual CDJ as being on the
+//     network.
 //
 // - Any remote DB devices will not respond to metadata queries.
 //

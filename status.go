@@ -6,7 +6,11 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"sync"
 )
+
+const statusWorkerQueueSize = 128
+const statusWorkerCount = 4
 
 // Status flag bitmasks
 const (
@@ -252,11 +256,14 @@ func (f StatusHandlerFunc) OnStatusUpdate(s *CDJStatus) { f(s) }
 // CDJ devices on the PRO DJ LINK network.
 type CDJStatusMonitor struct {
 	handlers []StatusHandler
+	lock     sync.RWMutex
 }
 
 // AddStatusHandler registers a StatusHandler to be called when any CDJ on the
 // PRO DJ LINK network reports its status.
 func (sm *CDJStatusMonitor) AddStatusHandler(h StatusHandler) {
+	sm.lock.Lock()
+	defer sm.lock.Unlock()
 	sm.handlers = append(sm.handlers, h)
 }
 
@@ -264,6 +271,20 @@ func (sm *CDJStatusMonitor) AddStatusHandler(h StatusHandler) {
 // given a UDP connection to listen on.
 func (sm *CDJStatusMonitor) activate(listenConn io.Reader) {
 	packet := make([]byte, 512)
+	updates := make(chan *CDJStatus, statusWorkerQueueSize)
+
+	for i := 0; i < statusWorkerCount; i++ {
+		go func() {
+			for status := range updates {
+				sm.lock.RLock()
+				handlers := append([]StatusHandler(nil), sm.handlers...)
+				sm.lock.RUnlock()
+				for _, handler := range handlers {
+					handler.OnStatusUpdate(status)
+				}
+			}
+		}()
+	}
 
 	statusUpdateHandler := func() {
 		n, err := listenConn.Read(packet)
@@ -280,8 +301,10 @@ func (sm *CDJStatusMonitor) activate(listenConn io.Reader) {
 			return
 		}
 
-		for _, h := range sm.handlers {
-			go h.OnStatusUpdate(status)
+		select {
+		case updates <- status:
+		default:
+			Log.Warn("Dropping status update because the handler queue is full")
 		}
 	}
 

@@ -7,6 +7,12 @@ import (
 	"unicode/utf16"
 )
 
+const (
+	maxRemoteStringUnits = 4096
+	maxRemoteBinaryBytes = 16 * 1024 * 1024
+	maxRemoteArguments   = 64
+)
+
 // Implements structs needed to create and parse packets passed over the TCP
 // portion of the Pioneer PRO DJ LINK network.
 //
@@ -434,20 +440,43 @@ type menuItem struct {
 
 // makeMenuItem constructs a menuItem from a genericPacket, pulling out
 // arguments as their correct struct fields.
-func makeMenuItem(p *genericPacket) *menuItem {
+func makeMenuItem(p *genericPacket) (*menuItem, error) {
+	if len(p.arguments) < 9 {
+		return nil, fmt.Errorf("menu item has too few arguments")
+	}
+	num, ok := p.arguments[1].(fieldNumber04)
+	if !ok {
+		return nil, fmt.Errorf("menu item number has an invalid type")
+	}
+	text1, ok := p.arguments[3].(fieldString)
+	if !ok {
+		return nil, fmt.Errorf("menu item title has an invalid type")
+	}
+	text2, ok := p.arguments[5].(fieldString)
+	if !ok {
+		return nil, fmt.Errorf("menu item secondary text has an invalid type")
+	}
+	typeValue, ok := p.arguments[6].(fieldNumber04)
+	if !ok {
+		return nil, fmt.Errorf("menu item type has an invalid type")
+	}
+	artworkID, ok := p.arguments[8].(fieldNumber04)
+	if !ok {
+		return nil, fmt.Errorf("menu item artwork ID has an invalid type")
+	}
 	// Single byte fields (fieldNumber01) don't appear to be supported in
 	// arguments list, so even though the menu item type is a single byte we
 	// still have to extract it as a fieldNumber04.
 	typeBytes := make([]byte, 4)
-	be.PutUint32(typeBytes, uint32(p.arguments[6].(fieldNumber04)))
+	be.PutUint32(typeBytes, uint32(typeValue))
 
 	return &menuItem{
-		num:       uint32(p.arguments[1].(fieldNumber04)),
-		text1:     string(p.arguments[3].(fieldString)),
-		text2:     string(p.arguments[5].(fieldString)),
-		artworkID: uint32(p.arguments[8].(fieldNumber04)),
+		num:       uint32(num),
+		text1:     string(text1),
+		text2:     string(text2),
+		artworkID: uint32(artworkID),
 		itemType:  typeBytes[3:][0],
-	}
+	}, nil
 }
 
 // menuItem is a convenience struct that adds some safe getter methods for
@@ -521,9 +550,23 @@ func readMessagePacket(conn io.Reader) (*genericPacket, error) {
 	// artwork it will specify that it has 4 arguments, but if there is no
 	// artwork *will only send 3*. in which case we cannot try and read the 4th
 	// argument. Pioneer WHY??
-	artworkHack := uint16(msgTypeField.(fieldNumber02)) == msgTypeArtwork
-
-	argsCount := int(argsCountField.(fieldNumber01))
+	msgType, ok := msgTypeField.(fieldNumber02)
+	if !ok {
+		return nil, fmt.Errorf("message type has an invalid field type")
+	}
+	txID, ok := txIDField.(fieldNumber04)
+	if !ok {
+		return nil, fmt.Errorf("transaction ID has an invalid field type")
+	}
+	argsCountValue, ok := argsCountField.(fieldNumber01)
+	if !ok {
+		return nil, fmt.Errorf("argument count has an invalid field type")
+	}
+	argsCount := int(argsCountValue)
+	if argsCount > maxRemoteArguments {
+		return nil, fmt.Errorf("argument count exceeds limit: %d", argsCount)
+	}
+	artworkHack := uint16(msgType) == msgTypeArtwork
 	argFields := make([]field, argsCount)
 
 	for i := 0; i < argsCount; i++ {
@@ -535,18 +578,22 @@ func readMessagePacket(conn io.Reader) (*genericPacket, error) {
 		argFields[i] = argField
 
 		// XXX: See note above. WHY PIONEER??
-		if artworkHack && i == 2 && int32(argField.(fieldNumber04)) == 0 {
+		fieldValue, isNumber := argField.(fieldNumber04)
+		if artworkHack && i == 2 && isNumber && int32(fieldValue) == 0 {
+			if argsCount < 4 {
+				return nil, fmt.Errorf("artwork response has too few arguments")
+			}
 			argFields[3] = fieldBinary{}
 			break
 		}
 	}
 
 	packet := &genericPacket{
-		messageType: uint16(msgTypeField.(fieldNumber02)),
+		messageType: uint16(msgType),
 		arguments:   argFields,
 	}
 
-	packet.transaction = uint32(txIDField.(fieldNumber04))
+	packet.transaction = uint32(txID)
 
 	return packet, nil
 }
@@ -555,42 +602,45 @@ func readMessagePacket(conn io.Reader) (*genericPacket, error) {
 // implements the field interface. Supports all defined fields.
 func readField(conn io.Reader) (field, error) {
 	fieldType := make([]byte, 1)
-	if _, err := conn.Read(fieldType); err != nil {
+	if _, err := io.ReadFull(conn, fieldType); err != nil {
 		return nil, err
 	}
 
 	switch fieldType[0] {
 	case fieldTypeNumber01:
 		fieldByte := make([]byte, 1)
-		if _, err := conn.Read(fieldByte); err != nil {
+		if _, err := io.ReadFull(conn, fieldByte); err != nil {
 			return nil, err
 		}
 
 		return fieldNumber01(fieldByte[0]), nil
 	case fieldTypeNumber02:
 		fieldBytes := make([]byte, 2)
-		if _, err := conn.Read(fieldBytes); err != nil {
+		if _, err := io.ReadFull(conn, fieldBytes); err != nil {
 			return nil, err
 		}
 
 		return fieldNumber02(be.Uint16(fieldBytes)), nil
 	case fieldTypeNumber04:
 		fieldBytes := make([]byte, 4)
-		if _, err := conn.Read(fieldBytes); err != nil {
+		if _, err := io.ReadFull(conn, fieldBytes); err != nil {
 			return nil, err
 		}
 
 		return fieldNumber04(be.Uint32(fieldBytes)), nil
 	case fieldTypeString:
 		fieldLenBytes := make([]byte, 4)
-		if _, err := conn.Read(fieldLenBytes); err != nil {
+		if _, err := io.ReadFull(conn, fieldLenBytes); err != nil {
 			return nil, err
 		}
 
 		stringLen := be.Uint32(fieldLenBytes)
+		if stringLen == 0 || stringLen > maxRemoteStringUnits {
+			return nil, fmt.Errorf("remote string length out of range: %d", stringLen)
+		}
 
 		s := make([]byte, stringLen*2)
-		if _, err := conn.Read(s); err != nil {
+		if _, err := io.ReadFull(conn, s); err != nil {
 			return nil, err
 		}
 
@@ -599,18 +649,27 @@ func readField(conn io.Reader) (field, error) {
 			str16Bit = append(str16Bit, be.Uint16(s[:2]))
 		}
 
-		// Remove the trailing NULL character
-		return fieldString(utf16.Decode(str16Bit)[:stringLen-1]), nil
+		if str16Bit[len(str16Bit)-1] != 0 {
+			return nil, fmt.Errorf("remote string is not null terminated")
+		}
+
+		// Remove the trailing NULL character.
+		return fieldString(utf16.Decode(str16Bit[:len(str16Bit)-1])), nil
 	case fieldTypeBinary:
 		fieldLenBytes := make([]byte, 4)
-		if _, err := conn.Read(fieldLenBytes); err != nil {
+		if _, err := io.ReadFull(conn, fieldLenBytes); err != nil {
 			return nil, err
 		}
 
 		dataSize := be.Uint32(fieldLenBytes)
+		if dataSize > maxRemoteBinaryBytes {
+			return nil, fmt.Errorf("remote binary length exceeds limit: %d", dataSize)
+		}
 
 		data := make([]byte, dataSize)
-		io.ReadFull(conn, data)
+		if _, err := io.ReadFull(conn, data); err != nil {
+			return nil, err
+		}
 
 		return fieldBinary(data), nil
 	}
