@@ -8,6 +8,8 @@ import (
 	"strconv"
 )
 
+const statusPacketBufferSize = 1500
+
 // Status flag bitmasks
 const (
 	statusFlagOnAir   byte = 1 << 3
@@ -263,7 +265,7 @@ func (sm *CDJStatusMonitor) AddStatusHandler(h StatusHandler) {
 // activate triggers the CDJStatusMonitor to begin listening for status packets
 // given a UDP connection to listen on.
 func (sm *CDJStatusMonitor) activate(listenConn io.Reader) {
-	packet := make([]byte, 512)
+	packet := make([]byte, statusPacketBufferSize)
 
 	statusUpdateHandler := func() {
 		n, err := listenConn.Read(packet)
