@@ -26,7 +26,8 @@ Public API stability starts at `1.0.0`.
 - Policy test suite under `tests/`, run by `scripts/run_tests.py`.
 - Hook coverage tracking through `scripts/check_hook_coverage.py`,
   `tools/hook-trace/sitecustomize.py`, and `hook-coverage-baseline.json`.
-- CI workflows `agents-compliance.yml` and `agents-policy.yml`.
+- CI workflows `sync-check.yml`, `agents-compliance.yml`, and
+  `agents-md-compliance.yml`, adopted from the template.
 - `Makefile`, `.pre-commit-config.yaml`, and `requirements-checkers.txt` for
   local policy checks.
 - `SECURITY.md`, `CONTRIBUTING.md`, `plan/HANDOFF.md`,
@@ -44,6 +45,10 @@ Public API stability starts at `1.0.0`.
 - `.github/workflows/main.yml` sets `persist-credentials: false` on the
   `actions/checkout` step. The default left the ephemeral `GITHUB_TOKEN` in the
   runner git configuration for the rest of the job.
+- `.github/workflows/main.yml` pins `actions/checkout`, `actions/setup-go`, and
+  `golangci/golangci-lint-action` to full commit SHAs. Rule 9 forbids a tag or
+  moving branch reference. Each pin names the commit its tag already pointed
+  at. The workflow keeps its behavior.
 
 ## [1.0.0] (2026-07-14)
 

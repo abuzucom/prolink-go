@@ -52,6 +52,15 @@ Required command syntax, public literals, and localized data retain exact form
 under higher-priority rules.
 
 
+<!-- repository-only:start -->
+## Repository-only orientation
+
+This section applies only to the `abuzucom/prolink-go` repository. Every
+entry below states a fact about this Go library. Adoption from this
+repository must omit this marked block. Run
+`python scripts/sync.py --print-adoptable` to print adoptable policy
+content. Local synchronized tool copies retain this block.
+
 ## Commands
 
 ```
@@ -184,6 +193,49 @@ The repository carries a split license. Files inherited from the initial fork
 stay MIT, copyright Evan Purkhiser, under `LICENSE`. Every new file carries
 BSD-3-Clause, copyright ABUZUCOM LLC, under `LICENSE.BSD-3-Clause`.
 `docs/template-drift.md` records the exact file boundary.
+<!-- repository-only:end -->
+
+<!-- Per-repo orientation.
+     Uncomment required sections.
+     Fill each selected section.
+     Delete unused sections.
+     Place filled sections after "Non-negotiable".
+     Put Commands and Do not touch first.
+
+## Commands
+install
+test all
+single test
+lint+typecheck
+build
+dev server
+
+## Do not touch
+List generated, vendored, and frozen paths.
+List files requiring an explicit active-human request.
+
+## Architecture
+Describe the stack.
+Map layers to paths.
+List entry points.
+Define the public API surface under rules 5-6.
+
+## Gotchas
+Record environment quirks, version pins, and required services.
+Add entries as evidence emerges.
+
+## Read before touching
+area: docs path
+
+## Handoff
+Record current status and next steps.
+Pair each entry with a verification method.
+See plan/HANDOFF.md.example.
+
+## Security
+Record the vulnerability reporting contact and process.
+See SECURITY.md.example.
+-->
 
 ## Banned agents
 
