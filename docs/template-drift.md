@@ -5,7 +5,7 @@ template. [`DRIFT.md`](https://github.com/abuzucom/agents/blob/main/DRIFT.md)
 in the template repository holds the drift policy and assigns this file to the
 adopting repository.
 
-Adopted from template commit `d5e040e7736fbdcd67f4d3d43db0650789630452`.
+Adopted from template commit `693f15617a22bfb8f154be22b82e2c56fcb845ff`.
 
 ## Adoption scope
 
