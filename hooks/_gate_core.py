@@ -2407,9 +2407,21 @@ def filesystem_repair_verdict(program: str, args: list) -> tuple:
 # Deleting a repository, a release, or a tag on the forge destroys work
 # that is not in any local clone.
 FORGE_PROGRAMS = frozenset({"gh", "glab", "hub", "tea"})
-FORGE_DELETE_NOUNS = frozenset({"repo", "repository", "release", "project",
-                                 "org", "organization", "gist", "secret",
-                                 "environment", "cache", "run", "variable"})
+FORGE_DELETE_NOUN_MAP = {
+    "cache": "cache",
+    "environment": "environment",
+    "gist": "gist",
+    "org": "org",
+    "organization": "organization",
+    "project": "project",
+    "release": "release",
+    "repo": "repo",
+    "repository": "repository",
+    "run": "run",
+    "secret": "secret",
+    "variable": "variable",
+}
+FORGE_DELETE_NOUNS = frozenset(FORGE_DELETE_NOUN_MAP)
 GH_GLOBAL_VALUE_OPTIONS = frozenset({"-R", "--repo", "--hostname"})
 GH_BROAD_AUTH_SCOPES = frozenset({"admin:org", "admin:public_key",
                                   "admin:repo_hook", "delete_repo", "gist",
@@ -2562,12 +2574,29 @@ OUTWARD_FACING_COMMANDS = frozenset({
     ("issue", "close"), ("issue", "reopen"),
     ("repo", "fork"), ("release", "create"),
 })
+OUTWARD_COMMAND_LABELS = {
+    ("pr", "create"): "pr create",
+    ("pr", "comment"): "pr comment",
+    ("pr", "review"): "pr review",
+    ("pr", "edit"): "pr edit",
+    ("pr", "close"): "pr close",
+    ("pr", "reopen"): "pr reopen",
+    ("pr", "ready"): "pr ready",
+    ("issue", "create"): "issue create",
+    ("issue", "comment"): "issue comment",
+    ("issue", "edit"): "issue edit",
+    ("issue", "close"): "issue close",
+    ("issue", "reopen"): "issue reopen",
+    ("repo", "fork"): "repo fork",
+    ("release", "create"): "release create",
+}
 
 
 def _external_target_verdict(args: list, command: list, noun: str,
                              action: str, repo_owner: str) -> tuple:
     """Route an outward-facing command at another owner to active consent."""
-    if (noun, action) not in OUTWARD_FACING_COMMANDS:
+    label = OUTWARD_COMMAND_LABELS.get((noun, action))
+    if not label:
         return "", ""
     # -R and --repo are global options, so _github_command_args already
     # removed them: the target has to come from the original arguments.
@@ -2576,8 +2605,8 @@ def _external_target_verdict(args: list, command: list, noun: str,
         owner = _repository_target_owner(target)
         if not owner:
             # An explicit target this gate cannot read is not clearance.
-            return "ask", (f"{sanitize(noun)} {sanitize(action)} names a "
-                           "repository target this gate cannot read")
+            return "ask", (f"{label} names a repository target this gate "
+                           "cannot read")
     else:
         owner = ""
         for token in command:
@@ -2591,11 +2620,10 @@ def _external_target_verdict(args: list, command: list, noun: str,
     if not repo_owner:
         # An unreadable origin cannot clear the target, so the gate asks
         # rather than waving an outward-facing command through.
-        return "ask", (f"{sanitize(noun)} {sanitize(action)} targets "
-                       f"{sanitize(owner)}, and this repository names no "
-                       "origin owner to compare")
-    return "ask", (f"{sanitize(noun)} {sanitize(action)} targets "
-                   f"{sanitize(owner)}, an owner outside this repository")
+        return "ask", (f"{label} targets {sanitize(owner)}, and this "
+                       "repository names no origin owner to compare")
+    return "ask", (f"{label} targets {sanitize(owner)}, an owner outside "
+                   "this repository")
 
 
 def github_cli_verdict(args: list, *, repo_owner: str = "") -> tuple:
@@ -2724,7 +2752,8 @@ def forge_verdict(program: str, args: list, cwd: str = "") -> tuple:
     if len(words) < FORGE_DELETE_MIN_WORDS or "delete" not in words[:3]:
         return "", ""
     noun = words[0]
-    if noun not in FORGE_DELETE_NOUNS:
+    matched_noun = FORGE_DELETE_NOUN_MAP.get(noun)
+    if not matched_noun:
         return "", ""
-    return "deny", (f"{name} {sanitize(noun)} delete removes work that no "
+    return "deny", (f"{name} {matched_noun} delete removes work that no "
                     "local clone holds, and no local action undoes it")
