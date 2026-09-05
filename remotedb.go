@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -29,11 +30,7 @@ const remoteDBConnectTimeout = 5 * time.Second
 // getRemoteDBServerAddr queries the remote device for the port that the remote
 // database server is listening on for requests.
 func getRemoteDBServerAddr(deviceIP net.IP) (string, error) {
-	if deviceIP == nil || deviceIP.IsUnspecified() || deviceIP.IsMulticast() ||
-		deviceIP.IsLoopback() {
-		return "", fmt.Errorf("invalid remote DB device address")
-	}
-	addr := net.JoinHostPort(deviceIP.String(), fmt.Sprintf("%d", rbDBServerQueryPort))
+	addr := net.JoinHostPort(deviceIP.String(), strconv.Itoa(rbDBServerQueryPort))
 
 	conn, err := net.DialTimeout("tcp", addr, remoteDBConnectTimeout)
 	if err != nil {
@@ -69,7 +66,7 @@ func getRemoteDBServerAddr(deviceIP net.IP) (string, error) {
 		return "", fmt.Errorf("remote DB server returned an invalid port")
 	}
 
-	return net.JoinHostPort(deviceIP.String(), fmt.Sprintf("%d", port)), nil
+	return net.JoinHostPort(deviceIP.String(), strconv.Itoa(int(port))), nil
 }
 
 type deviceConnection struct {

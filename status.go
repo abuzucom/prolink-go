@@ -10,6 +10,7 @@ import (
 )
 
 const statusHandlerQueueSize = 128
+const statusPacketBufferSize = 1500
 
 // Status flag bitmasks
 const (
@@ -292,7 +293,7 @@ func (sm *CDJStatusMonitor) AddStatusHandler(h StatusHandler) {
 // activate triggers the CDJStatusMonitor to begin listening for status packets
 // given a UDP connection to listen on.
 func (sm *CDJStatusMonitor) activate(listenConn io.Reader) {
-	packet := make([]byte, 512)
+	packet := make([]byte, statusPacketBufferSize)
 	updates := make(chan *CDJStatus, statusHandlerQueueSize)
 
 	sm.lock.Lock()
