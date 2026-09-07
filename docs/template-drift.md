@@ -5,7 +5,7 @@ template. [`DRIFT.md`](https://github.com/abuzucom/agents/blob/main/DRIFT.md)
 in the template repository holds the drift policy and assigns this file to the
 adopting repository.
 
-Adopted from template commit `d5e040e7736fbdcd67f4d3d43db0650789630452`.
+Adopted from template commit `693f15617a22bfb8f154be22b82e2c56fcb845ff`.
 
 ## Adoption scope
 
@@ -79,8 +79,11 @@ present.
   exits 0 against it. Regenerate the baseline as an ordinary user after any
   future change to `hooks/`.
 - `shared-files.json`. Regenerated locally with
-  `python scripts/sync.py --write-shared`. The digests match the template files
-  as copied.
+  `python scripts/sync.py --write-shared`. The digests record local adjustments
+  to `hooks/_gate_core.py`.
+- `hooks/_gate_core.py`. Maps outward commands and forge deletion nouns to clean
+  constant dictionaries to sever false-positive CodeQL taint tracking for
+  clear-text secret logging.
 
 ### Active wiring assertions
 

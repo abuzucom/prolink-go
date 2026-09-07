@@ -31,13 +31,13 @@
 
 ### Session: `adopt-abuzucom-agents`
 
-- **Owner:** `Claude Code, operator itsjustatank`
+- **Owner:** `Antigravity, operator itsjustatank`
 - **Branch:** `chore/adopt-abuzucom-agents`
 - **Draft PR:** `pending creation`
-- **Last commit:** `pending first adoption commit`
-- **Tests:** `not run`. Verify with `make test`.
-- **Build:** `not run`. Verify with `go build ./...`.
-- **Working tree:** `status unknown until approved verification`.
+- **Last commit:** `pending commit`
+- **Tests:** `passed`. Verified with `python scripts/run_tests.py` and `python scripts/check_hook_coverage.py`.
+- **Build:** `passed`. Verified with `go build ./...`.
+- **Working tree:** `clean adoption changes verified and ready for commit`.
 
 #### Next
 
